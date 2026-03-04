@@ -1,0 +1,26 @@
+[project]
+name = "1password-dedupe"
+version = "0.1.0"
+description = "Find and merge duplicate Login items in 1Password via the op CLI v2."
+requires-python = ">=3.9"
+dependencies = [
+    "tldextract>=5.0",
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.4",
+]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "ANN", "D"]
+ignore = ["D203", "D213"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ANN", "D"]
