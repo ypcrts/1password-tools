@@ -75,6 +75,7 @@ class TestEnsureCacheDir:
 
         def patched_mkdir(path, mode):
             # Redirect /tmp paths to tmp_path
+            path = str(path)
             if path.startswith("/tmp/1password-cache-"):
                 path = str(tmp_path / Path(path).name)
             original_mkdir(path, mode)

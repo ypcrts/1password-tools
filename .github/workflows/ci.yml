@@ -14,9 +14,11 @@ jobs:
       - uses: astral-sh/ruff-action@v3
         with:
           args: check
+          version-file: ""
       - uses: astral-sh/ruff-action@v3
         with:
           args: format --check
+          version-file: ""
 
   test:
     runs-on: ubuntu-latest
