@@ -913,9 +913,11 @@ def main() -> int:
 
     # ── Load resume state ────────────────────────────────────────────
     completed_keys: set[tuple[str, str]] = set()
+    prev_completed: list[list[str]] = []
     if args.resume:
         prev_state = load_run_state(args.vault)
-        completed_keys = {(d, u) for d, u in prev_state["completed"]}
+        prev_completed = prev_state.get("completed", [])
+        completed_keys = {(d, u) for d, u in prev_completed}
         prev_failures = len(prev_state.get("failures", []))
         skippable = sum(1 for k, _ in dup_groups if k in completed_keys)
         LOG.info(
@@ -928,8 +930,19 @@ def main() -> int:
 
     # ── Phase 3: Plan + apply per-group sequential ops ───────────────
     all_delete_ids: list[str] = []
-    all_errors: list[tuple[str, Exception]] = []
+    all_errors: list[dict[str, Any]] = []
     newly_completed: list[list[str]] = []
+
+    def _flush_state() -> None:
+        """Write current progress to disk so a crash doesn't lose work."""
+        if not args.apply:
+            return
+        state = {
+            "completed": prev_completed + newly_completed,
+            "failures": all_errors,
+            "timestamp": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+        save_run_state(args.vault, state)
 
     stamp_tag = dt.datetime.now(tz=dt.timezone.utc).strftime("%Y%m%d")
 
@@ -1098,6 +1111,7 @@ def main() -> int:
                 # Mark group as completed (only when --apply actually ran)
                 if args.apply:
                     newly_completed.append([domain, uname])
+                    _flush_state()
             except Exception as exc:  # noqa: BLE001
                 all_errors.append({
                     "domain": domain,
@@ -1108,6 +1122,7 @@ def main() -> int:
                     "error": str(exc),
                 })
                 LOG.warning("  ERROR processing group %s/%s: %s", domain, uname, exc)
+                _flush_state()
 
             progress.advance(group_task)
 
@@ -1128,27 +1143,19 @@ def main() -> int:
             })
             LOG.warning("  ERROR batch deleting: %s", exc)
 
-    # ── Save run state ───────────────────────────────────────────────
+    # ── Final state save ────────────────────────────────────────────
     if args.apply:
-        # Merge with previous state when resuming
-        if args.resume:
-            prev = load_run_state(args.vault)
-            all_completed = prev["completed"] + newly_completed
-        else:
-            all_completed = newly_completed
-
-        state = {
-            "completed": all_completed,
+        _flush_state()
+        state_path = save_run_state(args.vault, {
+            "completed": prev_completed + newly_completed,
             "failures": all_errors,
             "timestamp": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        }
-        state_path = save_run_state(args.vault, state)
+        })
 
         if all_errors:
             LOG.info("Run state saved to: %s", state_path)
             LOG.info("Re-run with --resume to retry %d failed group(s).", len(all_errors))
-
-        if not all_errors and all_completed:
+        elif newly_completed:
             # All groups succeeded — clean up state file
             clear_run_state(args.vault)
 
